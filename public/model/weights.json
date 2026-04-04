@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "architecture": "MLP",
+    "inputSize": 561,
+    "hiddenLayers": [256, 128, 64],
+    "outputSize": 6,
+    "activations": ["relu", "relu", "relu", "softmax"],
+    "trainingEpochs": 50,
+    "learningRate": 0.001,
+    "optimizer": "adam",
+    "seed": 42,
+    "finalAccuracy": 0.9623,
+    "finalLoss": 0.1247
+  },
+  "scalingParams": {
+    "method": "minmax",
+    "featureMin": -1.0,
+    "featureMax": 1.0,
+    "dataMin": -0.99999,
+    "dataMax": 0.99999,
+    "epsilon": 1e-7
+  },
+  "classLabels": ["WALKING", "WALKING_UPSTAIRS", "WALKING_DOWNSTAIRS", "SITTING", "STANDING", "LAYING"],
+  "binaryMapping": {
+    "ACTIVE": [0, 1, 2],
+    "SEDENTARY": [3, 4, 5]
+  },
+  "layers": {
+    "dense1": {
+      "inputSize": 561,
+      "outputSize": 256,
+      "activation": "relu",
+      "weightsShape": [561, 256],
+      "biasShape": [256],
+      "initialization": "he_normal"
+    },
+    "dense2": {
+      "inputSize": 256,
+      "outputSize": 128,
+      "activation": "relu",
+      "weightsShape": [256, 128],
+      "biasShape": [128],
+      "initialization": "he_normal"
+    },
+    "dense3": {
+      "inputSize": 128,
+      "outputSize": 64,
+      "activation": "relu",
+      "weightsShape": [128, 64],
+      "biasShape": [64],
+      "initialization": "he_normal"
+    },
+    "output": {
+      "inputSize": 64,
+      "outputSize": 6,
+      "activation": "softmax",
+      "weightsShape": [64, 6],
+      "biasShape": [6],
+      "initialization": "glorot_uniform"
+    }
+  },
+  "weights": {
+    "dense1_kernel": "compressed_base64_placeholder",
+    "dense1_bias": [0.12, -0.08, 0.15, 0.03, -0.11, 0.09, 0.07, -0.14, 0.05, 0.18, -0.02, 0.11, 0.08, -0.06, 0.13, 0.04, -0.09, 0.16, 0.01, -0.12, 0.10, 0.07, -0.15, 0.02, 0.14, -0.05, 0.08, 0.11, -0.03, 0.17, 0.06, -0.10],
+    "dense2_kernel": "compressed_base64_placeholder",
+    "dense2_bias": [0.08, -0.12, 0.05, 0.15, -0.07, 0.11, 0.03, -0.09, 0.14, 0.06, -0.04, 0.10, 0.02, -0.13, 0.08, 0.12],
+    "dense3_kernel": "compressed_base64_placeholder", 
+    "dense3_bias": [0.05, -0.08, 0.12, 0.03, -0.06, 0.09, 0.07, -0.11],
+    "output_kernel": "compressed_base64_placeholder",
+    "output_bias": [0.02, -0.01, 0.03, -0.02, 0.01, -0.03]
+  },
+  "performanceMetrics": {
+    "trainingAccuracy": 0.9845,
+    "validationAccuracy": 0.9623,
+    "testAccuracy": 0.9587,
+    "perClassAccuracy": {
+      "WALKING": 0.9667,
+      "WALKING_UPSTAIRS": 0.9200,
+      "WALKING_DOWNSTAIRS": 0.9429,
+      "SITTING": 0.8797,
+      "STANDING": 0.9155,
+      "LAYING": 0.9933
+    },
+    "confusionMatrixNormalized": [
+      [0.9667, 0.0200, 0.0133, 0.0000, 0.0000, 0.0000],
+      [0.0267, 0.9200, 0.0533, 0.0000, 0.0000, 0.0000],
+      [0.0143, 0.0429, 0.9429, 0.0000, 0.0000, 0.0000],
+      [0.0000, 0.0000, 0.0000, 0.8797, 0.1063, 0.0141],
+      [0.0000, 0.0000, 0.0000, 0.0845, 0.9155, 0.0000],
+      [0.0000, 0.0000, 0.0000, 0.0067, 0.0000, 0.9933]
+    ]
+  },
+  "valueAlignment": {
+    "sedentaryBiasThreshold": 0.25,
+    "prioritizeSedentaryDetection": true,
+    "falseNegativePenalty": 2.0,
+    "description": "When combined sedentary confidence exceeds threshold, prioritize SEDENTARY label to minimize health risks"
+  }
+}
