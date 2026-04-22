@@ -302,7 +302,8 @@ class MLPClassifier:
         weights = {}
         for i, layer in enumerate(self.layers):
             weights[f'layer_{i}_weights'] = layer.weights.tolist()
-            weights[f'layer_{i}_biases'] = layer.biases.tolist()
+            # Flatten biases from (1, output_size) to 1D array for JavaScript
+            weights[f'layer_{i}_biases'] = layer.biases.flatten().tolist()
         return weights
 
 
@@ -484,12 +485,14 @@ def save_model(weights: Dict, scaling_params: Dict, output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Train HAR MLP model')
-    parser.add_argument('--train_path', type=str, default='../data/train.csv',
+    parser.add_argument('--train_path', type=str, default='train.csv',
                         help='Path to training CSV')
-    parser.add_argument('--test_path', type=str, default='../data/test.csv',
+    parser.add_argument('--test_path', type=str, default='test.csv',
                         help='Path to test CSV')
-    parser.add_argument('--output', type=str, default='../public/model/trained_weights.json',
+    parser.add_argument('--output', type=str, default='../../public/model/weights.json',
                         help='Output path for model weights')
+    parser.add_argument('--output_dir', type=str, default='../../public/model',
+                        help='Output directory for model artifacts')
     
     args = parser.parse_args()
     
@@ -513,8 +516,10 @@ def main():
     
     X_val = X_train_scaled[indices[:val_size]]
     y_val = y_train_oh[indices[:val_size]]
+    y_val_labels = y_train[indices[:val_size]]
     X_train_final = X_train_scaled[indices[val_size:]]
     y_train_final = y_train_oh[indices[val_size:]]
+    y_train_labels = y_train[indices[val_size:]]
     
     print(f"\nData split:")
     print(f"  Training: {X_train_final.shape[0]} samples")
@@ -563,6 +568,14 @@ def main():
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     save_model(best_weights, scaling_params, args.output)
     
+    # Save confusion matrix
+    with open(f"{args.output_dir}/confusion_matrix.json", 'w') as f:
+        json.dump(cm.tolist(), f, indent=2)
+    
+    # Save training history
+    with open(f"{args.output_dir}/training_history.json", 'w') as f:
+        json.dump(history, f, indent=2)
+    
     print("\n" + "=" * 60)
     print("Training Complete!")
     print("=" * 60)
@@ -571,133 +584,5 @@ def main():
 if __name__ == '__main__':
     main()
 
-# === Baseline Agent: Logistic Regression ===
-import warnings
-warnings.filterwarnings('ignore')
-try:
-    from sklearn.linear_model import LogisticRegression
-except ImportError:
-    LogisticRegression = None
-
-def train_logistic_regression(X_train, y_train, X_val, y_val, X_test, y_test, scaling_params, output_dir):
-    if LogisticRegression is None:
-        print("scikit-learn not installed. Skipping baseline agent.")
-        return
-    print("\n=== Training Baseline Logistic Regression Agent ===")
-    clf = LogisticRegression(max_iter=200, solver='lbfgs', multi_class='multinomial', random_state=SEED)
-    clf.fit(X_train, y_train)
-    train_acc = clf.score(X_train, y_train)
-    val_acc = clf.score(X_val, y_val)
-    test_acc = clf.score(X_test, y_test)
-    print(f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | Test Acc: {test_acc:.4f}")
-
-    # Export weights (coefficients and intercept)
-    baseline_weights = {
-        'coef': clf.coef_.tolist(),
-        'intercept': clf.intercept_.tolist(),
-        'class_labels': ACTIVITIES,
-        'scaling_params': scaling_params
-    }
-    Path(f"{output_dir}").mkdir(parents=True, exist_ok=True)
-    with open(f"{output_dir}/baseline_weights.json", 'w') as f:
-        json.dump(baseline_weights, f, indent=2)
-    print(f"Baseline weights saved to {output_dir}/baseline_weights.json")
-
-    # Confusion matrix
-    from sklearn.metrics import confusion_matrix
-    y_pred = clf.predict(X_test)
-    cm = confusion_matrix(y_test, y_pred, labels=list(range(NUM_CLASSES)))
-    with open(f"{output_dir}/baseline_confusion_matrix.json", 'w') as f:
-        json.dump(cm.tolist(), f, indent=2)
-    print(f"Baseline confusion matrix saved to {output_dir}/baseline_confusion_matrix.json")
-
-    return clf
-
-# === Training History Export Helper ===
-def save_training_history(history, output_dir):
-    with open(f"{output_dir}/training_history.json", 'w') as f:
-        json.dump(history, f, indent=2)
-    print(f"Training history saved to {output_dir}/training_history.json")
-
-# === MLP Confusion Matrix Export Helper ===
-def save_confusion_matrix(cm, output_dir):
-    with open(f"{output_dir}/mlp_confusion_matrix.json", 'w') as f:
-        json.dump(cm.tolist(), f, indent=2)
-    print(f"MLP confusion matrix saved to {output_dir}/mlp_confusion_matrix.json")
-
-# === Patch main() to call new exports ===
-def main():
-    parser = argparse.ArgumentParser(description='Train HAR MLP model')
-    parser.add_argument('--train_path', type=str, default='../data/train.csv',
-                        help='Path to training CSV')
-    parser.add_argument('--test_path', type=str, default='../data/test.csv',
-                        help='Path to test CSV')
-    parser.add_argument('--output', type=str, default='../public/model/trained_weights.json',
-                        help='Output path for model weights')
-    parser.add_argument('--output_dir', type=str, default='../public/model',
-                        help='Output directory for all model artifacts')
-    args = parser.parse_args()
-
-    print("=" * 60)
-    print("HAR MLP Training - Experimentation Cycle")
-    print("=" * 60)
-
-    # Load data
-    X_train, y_train, X_test, y_test = load_data(args.train_path, args.test_path)
-
-    # Scale features (CRITICAL: training params only!)
-    X_train_scaled, X_test_scaled, scaling_params = scale_features(X_train, X_test)
-
-    # One-hot encode labels
-    y_train_oh = one_hot_encode(y_train)
-    y_test_oh = one_hot_encode(y_test)
-
-    # Split training into train/validation
-    val_size = int(X_train_scaled.shape[0] * VALIDATION_SPLIT)
-    indices = np.random.permutation(X_train_scaled.shape[0])
-
-    X_val = X_train_scaled[indices[:val_size]]
-    y_val = y_train_oh[indices[:val_size]]
-    y_val_labels = y_train[indices[:val_size]]
-    X_train_final = X_train_scaled[indices[val_size:]]
-    y_train_final = y_train_oh[indices[val_size:]]
-    y_train_labels = y_train[indices[val_size:]]
-
-    print(f"\nData split:")
-    print(f"  Training: {X_train_final.shape[0]} samples")
-    print(f"  Validation: {X_val.shape[0]} samples")
-    print(f"  Test: {X_test_scaled.shape[0]} samples")
-
-    # Create and train model
-    model = MLPClassifier()
-    history, best_weights = train(model, X_train_final, y_train_final, X_val, y_val)
-
-    # Save training history
-    save_training_history(history, args.output_dir)
-
-    # Final evaluation on test set
-    print("\n" + "=" * 60)
-    print("Final Evaluation on Test Set")
-    print("=" * 60)
-
-    test_acc, test_loss = model.evaluate(X_test_scaled, y_test_oh)
-    print(f"Test Accuracy: {test_acc:.4f}")
-    print(f"Test Loss: {test_loss:.4f}")
-
-    # Confusion matrix
-    y_pred, _ = model.predict(X_test_scaled)
-    cm = compute_confusion_matrix(y_test, y_pred)
-    save_confusion_matrix(cm, args.output_dir)
-
-    # Save model
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-    save_model(best_weights, scaling_params, args.output)
-
-    # === Baseline Agent ===
-    train_logistic_regression(
-        X_train_final, y_train_labels, X_val, y_val_labels, X_test_scaled, y_test, scaling_params, args.output_dir
-    )
-
-    print("\n" + "=" * 60)
-    print("Training Complete!")
-    print("=" * 60)
+if __name__ == '__main__':
+    main()

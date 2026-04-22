@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
   ACTIVITIES,
@@ -15,10 +15,55 @@ interface ConfusionMatrixProps {
   model: 'nn' | 'lr';
 }
 
+function matrixToConfusionData(matrix: number[][]): ConfusionMatrixData[] {
+  const data: ConfusionMatrixData[] = [];
+  for (let i = 0; i < ACTIVITIES.length; i++) {
+    for (let j = 0; j < ACTIVITIES.length; j++) {
+      data.push({
+        actual: ACTIVITIES[i],
+        predicted: ACTIVITIES[j],
+        count: matrix[i]?.[j] ?? 0,
+      });
+    }
+  }
+  return data;
+}
+
 export function ConfusionMatrix({ model }: ConfusionMatrixProps) {
-  const confusionData = useMemo(() => {
-    return model === 'nn' ? generateNNConfusionMatrix() : generateLRConfusionMatrix();
+  const [nnConfusionData, setNnConfusionData] = useState<ConfusionMatrixData[] | null>(null);
+
+  useEffect(() => {
+    if (model !== 'nn') return;
+
+    let isMounted = true;
+    const loadMatrix = async () => {
+      try {
+        const response = await fetch('/model/confusion_matrix.json');
+        if (!response.ok) throw new Error(`Failed loading confusion matrix: ${response.status}`);
+        const matrix = (await response.json()) as number[][];
+        if (isMounted) {
+          setNnConfusionData(matrixToConfusionData(matrix));
+        }
+      } catch (error) {
+        console.error('Failed to load trained confusion matrix. Falling back to static data.', error);
+        if (isMounted) {
+          setNnConfusionData(generateNNConfusionMatrix());
+        }
+      }
+    };
+
+    loadMatrix();
+    return () => {
+      isMounted = false;
+    };
   }, [model]);
+
+  const confusionData = useMemo(() => {
+    if (model === 'nn') {
+      return nnConfusionData ?? generateNNConfusionMatrix();
+    }
+    return generateLRConfusionMatrix();
+  }, [model, nnConfusionData]);
 
   const metrics = useMemo(() => calculateMetrics(confusionData), [confusionData]);
 
