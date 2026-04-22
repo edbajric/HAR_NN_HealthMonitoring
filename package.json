@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "train": "jupyter notebook scripts/training/run_training.ipynb",
+    "pipeline": "cd scripts/training && ./run_complete_pipeline.sh && cd ../.. && npm run dev"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

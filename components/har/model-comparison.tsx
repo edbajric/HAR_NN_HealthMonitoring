@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfusionMatrix } from './confusion-matrix'
@@ -8,11 +8,32 @@ import { Check, X, TrendingUp, TrendingDown } from 'lucide-react'
 
 export function ModelComparison() {
   const [selectedModel, setSelectedModel] = useState<'nn' | 'lr'>('nn')
+  const [nnAccuracy, setNnAccuracy] = useState<number | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+    const loadAccuracy = async () => {
+      try {
+        const response = await fetch('/model/confusion_matrix.json')
+        if (!response.ok) throw new Error(`Failed loading confusion matrix: ${response.status}`)
+        const cm = (await response.json()) as number[][]
+        const total = cm.flat().reduce((sum, v) => sum + v, 0)
+        const diagonal = cm.reduce((sum, row, idx) => sum + (row[idx] ?? 0), 0)
+        if (isMounted && total > 0) setNnAccuracy((diagonal / total) * 100)
+      } catch (error) {
+        console.error('Failed to load NN accuracy from confusion matrix', error)
+      }
+    }
+    loadAccuracy()
+    return () => {
+      isMounted = false
+    }
+  }, [])
   
-  const modelStats = {
+  const modelStats = useMemo(() => ({
     nn: {
       name: 'Neural Network (MLP)',
-      accuracy: 95.2,
+      accuracy: nnAccuracy ?? 93.9,
       params: '45,318',
       trainTime: '2.3s',
       inference: '0.8ms',
@@ -28,7 +49,7 @@ export function ModelComparison() {
       pros: ['Fast training', 'Interpretable', 'Few parameters'],
       cons: ['Linear only', 'Lower accuracy']
     }
-  }
+  }), [nnAccuracy])
   
   return (
     <div className="space-y-4">

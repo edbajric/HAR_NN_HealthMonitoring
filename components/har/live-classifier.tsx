@@ -1,114 +1,136 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Play, Pause, RotateCcw, AlertTriangle, Info } from 'lucide-react'
-import { 
-  Activity, 
-  ACTIVITIES, 
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Play, Pause, RotateCcw, AlertTriangle, Info } from 'lucide-react';
+import {
+  Activity,
+  ACTIVITIES,
   ACTIVITY_LABELS,
   generateSensorSample,
   SensorSample,
-  DATASET_STATS
-} from '@/lib/har-data'
-import { 
-  getInferenceEngine, 
+  DATASET_STATS,
+} from '@/lib/har-data';
+import {
+  getInferenceEngine,
   extractFeatures,
   MLPInferenceEngine,
-  InferenceResult 
-} from '@/lib/inference-engine'
+  InferenceResult,
+} from '@/lib/inference-engine';
 
 // Constants from UCI HAR specification
-const WINDOW_SIZE = 128 // 2.56 seconds at 50Hz
-const SAMPLING_RATE_MS = 20 // 50Hz = 20ms per sample
-const OVERLAP_RATIO = 0.5 // 50% overlap
+const WINDOW_SIZE = 128; // 2.56 seconds at 50Hz
+const SAMPLING_RATE_MS = 20; // 50Hz = 20ms per sample
+const OVERLAP_RATIO = 0.5; // 50% overlap
 
 interface SensorBuffer {
-  acc: { x: number; y: number; z: number }[]
-  gyro: { x: number; y: number; z: number }[]
+  acc: { x: number; y: number; z: number }[];
+  gyro: { x: number; y: number; z: number }[];
 }
 
 export function LiveClassifier() {
-  const [isRunning, setIsRunning] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState<Activity>('WALKING')
-  const [inferenceResult, setInferenceResult] = useState<InferenceResult | null>(null)
-  const [sensorBuffer, setSensorBuffer] = useState<SensorBuffer>({ acc: [], gyro: [] })
-  const [bufferFillPercent, setBufferFillPercent] = useState(0)
-  const [engine, setEngine] = useState<MLPInferenceEngine | null>(null)
-  const [lastSample, setLastSample] = useState<SensorSample | null>(null)
-  const [classificationCount, setClassificationCount] = useState(0)
-  const [showValueAlignmentInfo, setShowValueAlignmentInfo] = useState(false)
-  
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentActivity, setCurrentActivity] = useState<Activity>('WALKING');
+  const [inferenceResult, setInferenceResult] = useState<InferenceResult | null>(null);
+  const [sensorBuffer, setSensorBuffer] = useState<SensorBuffer>({ acc: [], gyro: [] });
+  const [bufferFillPercent, setBufferFillPercent] = useState(0);
+  const [engine, setEngine] = useState<MLPInferenceEngine | null>(null);
+  const [lastSample, setLastSample] = useState<SensorSample | null>(null);
+  const [classificationCount, setClassificationCount] = useState(0);
+  const [showValueAlignmentInfo, setShowValueAlignmentInfo] = useState(false);
+
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Initialize inference engine
   useEffect(() => {
     const initEngine = async () => {
-      const eng = getInferenceEngine()
-      await eng.initialize()
-      setEngine(eng)
-    }
-    initEngine()
-  }, [])
-  
+      const eng = getInferenceEngine();
+      await eng.initialize();
+      setEngine(eng);
+    };
+    initEngine();
+  }, []);
+
   // Collect sensor readings and run inference when buffer is full
   const collectSensorReading = useCallback(() => {
     // Generate sensor sample for the simulated activity
-    const sample = generateSensorSample(currentActivity)
-    setLastSample(sample)
-    
+    const sample = generateSensorSample(currentActivity);
+    setLastSample(sample);
+
     setSensorBuffer(prev => {
-      const newAcc = [...prev.acc, { x: sample.accX, y: sample.accY, z: sample.accZ }]
-      const newGyro = [...prev.gyro, { x: sample.gyroX, y: sample.gyroY, z: sample.gyroZ }]
-      
+      const newAcc = [...prev.acc, { x: sample.accX, y: sample.accY, z: sample.accZ }];
+      const newGyro = [...prev.gyro, { x: sample.gyroX, y: sample.gyroY, z: sample.gyroZ }];
+
       // Keep only the last WINDOW_SIZE readings (sliding window)
-      const trimmedAcc = newAcc.slice(-WINDOW_SIZE)
-      const trimmedGyro = newGyro.slice(-WINDOW_SIZE)
-      
+      const trimmedAcc = newAcc.slice(-WINDOW_SIZE);
+      const trimmedGyro = newGyro.slice(-WINDOW_SIZE);
+
       // Update buffer fill percentage
-      const fillPercent = Math.min(100, (trimmedAcc.length / WINDOW_SIZE) * 100)
-      setBufferFillPercent(fillPercent)
-      
-      // Run inference when buffer is full
-      if (trimmedAcc.length >= WINDOW_SIZE && engine) {
+      const fillPercent = Math.min(100, (trimmedAcc.length / WINDOW_SIZE) * 100);
+      setBufferFillPercent(fillPercent);
+
+      // Run inference when buffer is full AND engine is ready
+      if (trimmedAcc.length >= WINDOW_SIZE && engine && engine.ready) {
         try {
-          const features = extractFeatures(trimmedAcc, trimmedGyro)
-          const result = engine.predict(features)
-          setInferenceResult(result)
-          setClassificationCount(c => c + 1)
+          const features = extractFeatures(trimmedAcc, trimmedGyro);
+          const result = engine.predict(features);
+          setInferenceResult(result);
+          setClassificationCount(c => c + 1);
         } catch (err) {
-          console.error('[v0] Inference error:', err)
+          console.error('[v0] Inference error:', err);
+        }
+      } else if (trimmedAcc.length >= WINDOW_SIZE && engine && !engine.ready) {
+        // Log warning only once
+        if (classificationCount === 0) {
+          console.warn('⏳ Engine not ready yet. Waiting for model to load...');
         }
       }
-      
-      return { acc: trimmedAcc, gyro: trimmedGyro }
-    })
-  }, [currentActivity, engine])
-  
+
+      return { acc: trimmedAcc, gyro: trimmedGyro };
+    });
+  }, [currentActivity, engine, classificationCount]);
+
   // Start/stop sensor collection
   useEffect(() => {
     if (isRunning) {
-      intervalRef.current = setInterval(collectSensorReading, SAMPLING_RATE_MS)
+      intervalRef.current = setInterval(collectSensorReading, SAMPLING_RATE_MS);
     } else if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    
+
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+        clearInterval(intervalRef.current);
       }
-    }
-  }, [isRunning, collectSensorReading])
-  
+    };
+  }, [isRunning, collectSensorReading]);
+
+  // Auto-cycle through activities every 3 seconds when running
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const cycleActivities = setInterval(() => {
+      setCurrentActivity(prev => {
+        const currentIdx = ACTIVITIES.indexOf(prev);
+        const nextIdx = (currentIdx + 1) % ACTIVITIES.length;
+        const nextActivity = ACTIVITIES[nextIdx];
+        // Keep a continuous sliding window across activity changes to avoid re-warmup bias.
+        return nextActivity;
+      });
+    }, 3000); // Cycle every 3 seconds
+
+    return () => clearInterval(cycleActivities);
+  }, [isRunning]);
+
   const resetBuffer = () => {
-    setSensorBuffer({ acc: [], gyro: [] })
-    setBufferFillPercent(0)
-    setInferenceResult(null)
-    setClassificationCount(0)
-  }
-  
+    setSensorBuffer({ acc: [], gyro: [] });
+    setBufferFillPercent(0);
+    setInferenceResult(null);
+    setClassificationCount(0);
+  };
+
   return (
     <Card className="bg-card border-border">
       <CardHeader className="pb-2">
@@ -118,26 +140,40 @@ export function LiveClassifier() {
             <CardDescription>MLP Inference with 128-Sample Window</CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="icon"
               onClick={() => setIsRunning(!isRunning)}
               title={isRunning ? 'Pause' : 'Start'}
             >
               {isRunning ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={resetBuffer}
-              title="Reset buffer"
-            >
+            <Button variant="ghost" size="icon" onClick={resetBuffer} title="Reset buffer">
               <RotateCcw className="w-4 h-4" />
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Model Status */}
+        {!engine?.ready && (
+          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                Loading model... Please wait for weights to load from{' '}
+                <code className="text-xs">public/model/weights.json</code>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {engine?.ready && (
+          <div className="p-2 rounded-lg bg-success/10 border border-success/20">
+            <p className="text-xs text-success font-medium">✓ Model ready for inference</p>
+          </div>
+        )}
+
         {/* Buffer Status */}
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -149,7 +185,7 @@ export function LiveClassifier() {
             </span>
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div 
+            <div
               className={`h-full transition-all duration-100 ${
                 bufferFillPercent >= 100 ? 'bg-success' : 'bg-primary'
               }`}
@@ -162,12 +198,14 @@ export function LiveClassifier() {
             </p>
           )}
         </div>
-        
+
         {/* Activity Selector */}
         <div>
-          <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Simulated Activity</p>
+          <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">
+            Simulated Activity
+          </p>
           <div className="flex flex-wrap gap-1.5">
-            {ACTIVITIES.map((activity) => (
+            {ACTIVITIES.map(activity => (
               <button
                 key={activity}
                 onClick={() => setCurrentActivity(activity)}
@@ -182,7 +220,7 @@ export function LiveClassifier() {
             ))}
           </div>
         </div>
-        
+
         {/* Softmax Probability Distribution */}
         {inferenceResult && (
           <div>
@@ -195,46 +233,52 @@ export function LiveClassifier() {
               </span>
             </div>
             <div className="space-y-1.5">
-              {ACTIVITIES.map((activity) => {
-                const prob = inferenceResult.multiclass.probabilities[activity]
-                const isTop = activity === inferenceResult.multiclass.predicted
+              {ACTIVITIES.map(activity => {
+                const prob = inferenceResult.multiclass.probabilities[activity];
+                const isTop = activity === inferenceResult.multiclass.predicted;
                 return (
                   <div key={activity} className="flex items-center gap-2">
-                    <span className={`text-xs w-20 truncate ${
-                      isTop ? 'font-semibold text-foreground' : 'text-muted-foreground'
-                    }`}>
+                    <span
+                      className={`text-xs w-20 truncate ${
+                        isTop ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                      }`}
+                    >
                       {ACTIVITY_LABELS[activity]}
                     </span>
                     <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className={`h-full transition-all duration-200 ${
                           isTop ? 'bg-primary' : 'bg-muted-foreground/30'
                         }`}
                         style={{ width: `${prob * 100}%` }}
                       />
                     </div>
-                    <span className={`text-xs font-mono w-12 text-right ${
-                      isTop ? 'text-foreground' : 'text-muted-foreground'
-                    }`}>
+                    <span
+                      className={`text-xs font-mono w-12 text-right ${
+                        isTop ? 'text-foreground' : 'text-muted-foreground'
+                      }`}
+                    >
                       {(prob * 100).toFixed(1)}%
                     </span>
                   </div>
-                )
+                );
               })}
             </div>
           </div>
         )}
-        
+
         {/* Prediction Display */}
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 rounded-lg bg-muted/50 border border-border">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Multiclass</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+              Multiclass
+            </p>
             <p className="text-lg font-semibold text-foreground">
               {inferenceResult ? ACTIVITY_LABELS[inferenceResult.multiclass.predicted] : '—'}
             </p>
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-primary transition-all duration-300"
                   style={{ width: `${(inferenceResult?.multiclass.confidence ?? 0) * 100}%` }}
                 />
@@ -244,14 +288,18 @@ export function LiveClassifier() {
               </span>
             </div>
           </div>
-          
-          <div className={`p-3 rounded-lg border ${
-            inferenceResult?.binary.predicted === 'ACTIVE' 
-              ? 'bg-success/10 border-success/20' 
-              : 'bg-warning/10 border-warning/20'
-          }`}>
+
+          <div
+            className={`p-3 rounded-lg border ${
+              inferenceResult?.binary.predicted === 'ACTIVE'
+                ? 'bg-success/10 border-success/20'
+                : 'bg-warning/10 border-warning/20'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Binary</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                Binary
+              </p>
               <button
                 onClick={() => setShowValueAlignmentInfo(!showValueAlignmentInfo)}
                 className="text-muted-foreground hover:text-foreground"
@@ -259,17 +307,21 @@ export function LiveClassifier() {
                 <Info className="w-3 h-3" />
               </button>
             </div>
-            <p className={`text-lg font-semibold ${
-              inferenceResult?.binary.predicted === 'ACTIVE' ? 'text-success' : 'text-warning'
-            }`}>
+            <p
+              className={`text-lg font-semibold ${
+                inferenceResult?.binary.predicted === 'ACTIVE' ? 'text-success' : 'text-warning'
+              }`}
+            >
               {inferenceResult?.binary.predicted ?? '—'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {inferenceResult?.binary.predicted === 'ACTIVE' ? 'Movement detected' : 'Stationary state'}
+              {inferenceResult?.binary.predicted === 'ACTIVE'
+                ? 'Movement detected'
+                : 'Stationary state'}
             </p>
           </div>
         </div>
-        
+
         {/* Value Alignment Info */}
         {showValueAlignmentInfo && (
           <div className="p-3 rounded-lg bg-warning/5 border border-warning/20">
@@ -278,22 +330,23 @@ export function LiveClassifier() {
               <div className="text-xs text-muted-foreground">
                 <p className="font-medium text-foreground mb-1">Value Alignment: Sedentary Bias</p>
                 <p>
-                  To minimize false negatives for sedentary behavior (a health risk), 
-                  the agent prioritizes SEDENTARY detection when combined sedentary 
-                  probability exceeds 25%. This addresses the asymmetric cost of 
-                  misclassification in health monitoring.
+                  To minimize false negatives for sedentary behavior (a health risk), the agent
+                  prioritizes SEDENTARY detection when combined sedentary probability exceeds 25%.
+                  This addresses the asymmetric cost of misclassification in health monitoring.
                 </p>
                 {inferenceResult && (
                   <div className="mt-2 flex gap-4 font-mono">
                     <span>Active: {(inferenceResult.binary.activeProb * 100).toFixed(1)}%</span>
-                    <span>Sedentary: {(inferenceResult.binary.sedentaryProb * 100).toFixed(1)}%</span>
+                    <span>
+                      Sedentary: {(inferenceResult.binary.sedentaryProb * 100).toFixed(1)}%
+                    </span>
                   </div>
                 )}
               </div>
             </div>
           </div>
         )}
-        
+
         {/* Sensor Stream */}
         <div>
           <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">
@@ -310,7 +363,7 @@ export function LiveClassifier() {
             <SensorGauge label="Gyro Z" value={lastSample?.gyroZ ?? 0} unit="rad/s" />
           </div>
         </div>
-        
+
         {/* Classification Stats */}
         <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-3">
           <span>Classifications: {classificationCount}</span>
@@ -318,13 +371,13 @@ export function LiveClassifier() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function SensorGauge({ label, value, unit }: { label: string; value: number; unit: string }) {
-  const normalizedValue = Math.min(1, Math.max(-1, value))
-  const percentage = ((normalizedValue + 1) / 2) * 100
-  
+  const normalizedValue = Math.min(1, Math.max(-1, value));
+  const percentage = ((normalizedValue + 1) / 2) * 100;
+
   return (
     <div className="p-2 rounded-lg bg-muted/30">
       <div className="flex items-center justify-between mb-1">
@@ -335,14 +388,14 @@ function SensorGauge({ label, value, unit }: { label: string; value: number; uni
       <div className="h-1 bg-muted rounded-full overflow-hidden relative">
         {/* Center line */}
         <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border" />
-        <div 
+        <div
           className="h-full bg-chart-1 transition-all duration-100 absolute"
-          style={{ 
+          style={{
             left: percentage < 50 ? `${percentage}%` : '50%',
-            width: Math.abs(percentage - 50) + '%'
+            width: Math.abs(percentage - 50) + '%',
           }}
         />
       </div>
     </div>
-  )
+  );
 }
